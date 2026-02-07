@@ -11,6 +11,7 @@ export interface ApiDeployConstructProps {
   deploymentSecret: secretsmanager.ISecret;
   pipeline: codepipeline.IPipeline;
   codePath: string;
+  githubOauthTokenArn: string;
 }
 
 export default class ApiDeployConstruct extends Construct {
@@ -24,6 +25,7 @@ export default class ApiDeployConstruct extends Construct {
       environment: {
         DEPLOYMENT_SECRET_ARN: props.deploymentSecret.secretArn,
         PIPELINE_NAME: props.pipeline.pipelineName,
+        GITHUB_OAUTH_TOKEN: props.githubOauthTokenArn,
       },
     });
 
@@ -41,6 +43,7 @@ export default class ApiDeployConstruct extends Construct {
     });
 
     const deployResource = api.root.addResource("deploy");
+    const deploymentResource = api.root.addResource("deployment");
 
     const requestModel = new apigateway.Model(this, "DeployRequestModel", {
       restApi: api,
@@ -77,11 +80,39 @@ export default class ApiDeployConstruct extends Construct {
       },
     );
 
+    const deleteRequestModel = new apigateway.Model(
+      this,
+      "DeleteDeployRequestModel",
+      {
+        restApi: api,
+        contentType: "application/json",
+        schema: {
+          schema: apigateway.JsonSchemaVersion.DRAFT4,
+          title: "DeleteDeployRequest",
+          type: apigateway.JsonSchemaType.OBJECT,
+          properties: {
+            githubRepositoryName: { type: apigateway.JsonSchemaType.STRING },
+            subdomain: { type: apigateway.JsonSchemaType.STRING },
+          },
+          required: ["githubRepositoryName", "subdomain"],
+        },
+      },
+    );
+
     deployResource.addMethod(
       "POST",
       new apigateway.LambdaIntegration(apiLambdaFunction),
       {
         requestModels: { "application/json": requestModel },
+        requestValidator,
+      },
+    );
+
+    deploymentResource.addMethod(
+      "DELETE",
+      new apigateway.LambdaIntegration(apiLambdaFunction),
+      {
+        requestModels: { "application/json": deleteRequestModel },
         requestValidator,
       },
     );
@@ -92,6 +123,10 @@ export default class ApiDeployConstruct extends Construct {
 
     new cdk.CfnOutput(this, "ApiDeployEndpoint", {
       value: `${api.url}deploy`,
+    });
+
+    new cdk.CfnOutput(this, "ApiDeploymentEndpoint", {
+      value: `${api.url}deployment`,
     });
   }
 }

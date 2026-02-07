@@ -7,6 +7,7 @@ export interface PipelineStackProps extends cdk.StackProps {
   pipelineName: string;
   githubRepoOwner: string;
   githubRepoName: string;
+  githubOauthTokenArn: string;
   codeConnectionArn: string;
   branch?: string;
 }
@@ -36,6 +37,7 @@ export class PipelineStack extends cdk.Stack {
       deploymentSecret: envVariablesSecret,
       pipeline: baseDeployment.pipeline,
       codePath: "lambda",
+      githubOauthTokenArn: props.githubOauthTokenArn,
     });
 
     new cdk.CfnOutput(this, "PipelineName", {

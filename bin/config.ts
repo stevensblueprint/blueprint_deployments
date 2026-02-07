@@ -13,11 +13,15 @@ const SCHEMA = z
     CODE_CONNECTION_ARN: z
       .string()
       .regex(arnRegex, "CODE_CONNECTION_ARN must be a valid AWS ARN"),
+    GITHUB_OAUTH_TOKEN_ARN: z
+      .string()
+      .regex(arnRegex, "GITHUB_OAUTH_TOKEN_ARN must be a valid AWS ARN"),
   })
   .transform((env) => ({
     pipelineName: env.PIPELINE_NAME,
     githubRepoName: env.GITHUB_REPO_NAME,
     githubRepoOwner: env.GITHUB_REPO_OWNER,
+    githubOauthTokenArn: env.GITHUB_OAUTH_TOKEN_ARN,
     codeConnectionArn: env.CODE_CONNECTION_ARN,
   }));
 
