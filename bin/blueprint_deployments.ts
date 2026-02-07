@@ -9,6 +9,7 @@ new PipelineStack(app, "blueprint-deployments-pipeline-stack", {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: process.env.CDK_DEFAULT_REGION,
   },
+  description: "CDK Pipeline stack to manage blueprint deployments",
   pipelineName: config.pipelineName,
   githubRepoOwner: config.githubRepoOwner,
   githubRepoName: config.githubRepoName,
