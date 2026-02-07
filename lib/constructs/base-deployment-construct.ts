@@ -53,7 +53,7 @@ export default class BaseDeploymentConstruct extends Construct {
           pre_build: {
             commands: [
               'echo "Unpacking JSON secrets into environment variables..."',
-              'eval "$(echo "$ENV_VARS_SECRET_ARN" | jq -r \'to_entries | .[] | "export \\(.key)=\\\"\\(.value)\\\"\"\' )"',
+              'eval "$(echo "$ENV_VARS_SECRET_ARN" | jq -r \'to_entries | .[] | "export \\(.key)=\\(.value|@sh)"\' )"',
             ],
           },
           build: {
@@ -94,7 +94,7 @@ export default class BaseDeploymentConstruct extends Construct {
           pre_build: {
             commands: [
               'echo "Unpacking JSON secrets into environment variables..."',
-              'eval "$(echo "$ENV_VARS_SECRET_ARN" | jq -r \'to_entries | .[] | "export \\(.key)=\\\"\\(.value)\\\"\"\' )"',
+              'eval "$(echo "$ENV_VARS_SECRET_ARN" | jq -r \'to_entries | .[] | "export \\(.key)=\\(.value|@sh)"\' )"',
             ],
           },
           build: {
