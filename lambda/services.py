@@ -39,6 +39,28 @@ class GithubService:
     ) -> Dict[str, Any]:
         return self.create_repository_from_template(repo_name, template, private)
 
+    def delete_repository(self, repo_name: str) -> bool:
+        owner, name = self._resolve_target_owner_and_name(repo_name)
+        url = f"{self.api_base}/repos/{owner}/{name}"
+        req = urllib.request.Request(
+            url,
+            method="DELETE",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {self.token}",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req) as resp:
+                return resp.status == 204
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return False
+            body = e.read().decode("utf-8")
+            raise RuntimeError(
+                f"GitHub API error {e.code} for {url}: {body or e.reason}"
+            ) from e
+
     def _resolve_target_owner_and_name(self, repo_name: str) -> Tuple[str, str]:
         if "/" in repo_name:
             owner_name, name = repo_name.split("/", 1)
@@ -85,4 +107,19 @@ class GithubService:
             body = e.read().decode("utf-8")
             raise RuntimeError(
                 f"GitHub API error {e.code} for {url}: {body or e.reason}"
+            ) from e
+
+
+class CloudFormationService:
+    def __init__(self, client):
+        self.client = client
+
+    def destroy_stack(self, stack_name: str) -> None:
+        try:
+            self.client.delete_stack(StackName=stack_name)
+        except self.client.exceptions.ClientError as e:
+            if "does not exist" in str(e):
+                return
+            raise RuntimeError(
+                f"CloudFormation error for stack {stack_name}: {str(e)}"
             ) from e
