@@ -32,5 +32,17 @@ export class PipelineStack extends cdk.Stack {
       envVariablesSecret: envVariablesSecret,
       branch: props.branch,
     });
+
+    new cdk.CfnOutput(this, "PipelineName", {
+      value: props.pipelineName,
+    });
+
+    new cdk.CfnOutput(this, "EnvVariablesSecretArn", {
+      value: envVariablesSecret.secretArn,
+    });
+
+    new cdk.CfnOutput(this, "EnvVariablesSecretName", {
+      value: envVariablesSecret.secretName,
+    });
   }
 }
