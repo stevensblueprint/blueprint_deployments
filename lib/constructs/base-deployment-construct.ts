@@ -2,6 +2,7 @@ import * as codepipeline from "aws-cdk-lib/aws-codepipeline";
 import * as codepipeline_actions from "aws-cdk-lib/aws-codepipeline-actions";
 import * as codebuild from "aws-cdk-lib/aws-codebuild";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
+import * as iam from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
 
 export interface BaseDeploymentConstructProps {
@@ -93,7 +94,7 @@ export default class BaseDeploymentConstruct extends Construct {
             "runtime-versions": {
               nodejs: "latest",
             },
-            commands: ["npm i -g aws-cdk@latest", "cdk --version", "npm ci"],
+            commands: ["npm i -g aws-cdk@latest", "cdk --version"],
           },
           pre_build: {
             commands: [
@@ -107,7 +108,8 @@ export default class BaseDeploymentConstruct extends Construct {
           build: {
             commands: [
               "echo Deploying all stacks...",
-              "cdk deploy --all --require-approval never",
+              "ls -la",
+              "cdk deploy '*-website-stack' --app . --require-approval never",
             ],
           },
         },
@@ -116,6 +118,31 @@ export default class BaseDeploymentConstruct extends Construct {
         buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
       },
     });
+
+    deployProject.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ssm:GetParameter", "ssm:AssumeRole"],
+        resources: ["*"],
+      }),
+    );
+
+    deployProject.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["sts:AssumeRole"],
+        resources: [
+          `arn:aws:iam::*:role/cdk-*-deploy-role-*`,
+          `arn:aws:iam::*:role/cdk-*-file-publishing-role-*`,
+          `arn:aws:iam::*:role/cdk-*-lookup-role-*`,
+        ],
+      }),
+    );
+
+    deployProject.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cloudformation:*"],
+        resources: ["*"],
+      }),
+    );
 
     props.envVariablesSecret.grantRead(this.buildProject);
     props.envVariablesSecret.grantRead(deployProject);
