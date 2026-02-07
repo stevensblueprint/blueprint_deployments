@@ -53,7 +53,7 @@ export default class BaseDeploymentConstruct extends Construct {
           pre_build: {
             commands: [
               'echo "Unpacking JSON secrets into environment variables..."',
-              'eval $(echo "$ENV_VARS_SECRET_ARN" | xargs aws secretsmanager get-secret-value --secret-id | jq -r "to_entries | .[] | \"export \\(.key)=\\\"\\(.value)\\\"\"")',
+              'eval "$(echo "$ENV_VARS_SECRET_ARN" | jq -r \'to_entries | .[] | "export \\(.key)=\\\"\\(.value)\\\"\"\' )"',
             ],
           },
           build: {
@@ -82,7 +82,7 @@ export default class BaseDeploymentConstruct extends Construct {
         version: "0.2",
         env: {
           "secrets-manager": {
-            ALL_SECRETS: props.envVariablesSecret.secretArn,
+            ENV_VARS_SECRET_ARN: props.envVariablesSecret.secretArn,
           },
         },
         phases: {
@@ -94,7 +94,7 @@ export default class BaseDeploymentConstruct extends Construct {
           pre_build: {
             commands: [
               'echo "Unpacking JSON secrets into environment variables..."',
-              'eval $(echo "$ALL_SECRETS" | jq -r "to_entries | .[] | \"export \\(.key)=\\\"\\(.value)\\\"\"")',
+              'eval "$(echo "$ENV_VARS_SECRET_ARN" | jq -r \'to_entries | .[] | "export \\(.key)=\\\"\\(.value)\\\"\"\' )"',
             ],
           },
           build: {

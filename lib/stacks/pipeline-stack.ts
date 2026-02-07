@@ -21,8 +21,6 @@ export class PipelineStack extends cdk.Stack {
         description: "Secret to store environment variables for the pipeline",
       },
     );
-    console.log("githubRepoOwner:", props.githubRepoOwner);
-    console.log("githubRepoName:", props.githubRepoName);
 
     new BaseDeploymentConstruct(this, "BaseDeployment", {
       pipelineName: props.pipelineName,
