@@ -2,7 +2,6 @@ import * as codepipeline from "aws-cdk-lib/aws-codepipeline";
 import * as codepipeline_actions from "aws-cdk-lib/aws-codepipeline-actions";
 import * as codebuild from "aws-cdk-lib/aws-codebuild";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
-import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 
 export interface BaseDeploymentConstructProps {
@@ -16,6 +15,7 @@ export interface BaseDeploymentConstructProps {
 
 export default class BaseDeploymentConstruct extends Construct {
   protected readonly buildProject: codebuild.PipelineProject;
+  public readonly pipeline: codepipeline.Pipeline;
   constructor(
     scope: Construct,
     id: string,
@@ -48,16 +48,19 @@ export default class BaseDeploymentConstruct extends Construct {
             "runtime-versions": {
               nodejs: "latest",
             },
-            commands: ["npm ci"],
+            commands: ["npm i -g aws-cdk@latest", "cdk --version", "npm ci"],
           },
           pre_build: {
             commands: [
               'echo "Unpacking JSON secrets into environment variables..."',
-              'eval "$(echo "$ENV_VARS_SECRET_ARN" | jq -r \'to_entries | .[] | "export \\(.key)=\\(.value|@sh)"\' )"',
+              'echo "$ENV_VARS_SECRET_ARN" | jq -r \'to_entries[] | "export " + .key + "=" + (.value | if type == "string" then @json else (tojson | @json) end)\' > /tmp/env_vars.sh',
+              "cat /tmp/env_vars.sh",
+              ". /tmp/env_vars.sh",
+              'echo "Environment variables loaded successfully"',
             ],
           },
           build: {
-            commands: ["echo Building...", "npx cdk synth"],
+            commands: ["echo Building...", "cdk synth"],
           },
         },
         artifacts: {
@@ -90,17 +93,21 @@ export default class BaseDeploymentConstruct extends Construct {
             "runtime-versions": {
               nodejs: "latest",
             },
+            commands: ["npm i -g aws-cdk@latest", "cdk --version", "npm ci"],
           },
           pre_build: {
             commands: [
               'echo "Unpacking JSON secrets into environment variables..."',
-              'eval "$(echo "$ENV_VARS_SECRET_ARN" | jq -r \'to_entries | .[] | "export \\(.key)=\\(.value|@sh)"\' )"',
+              'echo "$ENV_VARS_SECRET_ARN" | jq -r \'to_entries[] | "export " + .key + "=" + (.value | if type == "string" then @json else (tojson | @json) end)\' > /tmp/env_vars.sh',
+              "cat /tmp/env_vars.sh",
+              ". /tmp/env_vars.sh",
+              'echo "Environment variables loaded successfully"',
             ],
           },
           build: {
             commands: [
               "echo Deploying all stacks...",
-              "npx cdk deploy --all --require-approval never",
+              "cdk deploy --all --require-approval never",
             ],
           },
         },
@@ -119,7 +126,7 @@ export default class BaseDeploymentConstruct extends Construct {
       input: cloudAssemblyArtifact,
     });
 
-    new codepipeline.Pipeline(this, "Pipeline", {
+    this.pipeline = new codepipeline.Pipeline(this, "Pipeline", {
       pipelineName: props.pipelineName,
       stages: [
         {

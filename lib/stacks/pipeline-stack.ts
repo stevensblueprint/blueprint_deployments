@@ -1,6 +1,7 @@
 import * as cdk from "aws-cdk-lib";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import BaseDeploymentConstruct from "../constructs/base-deployment-construct";
+import ApiDeployConstruct from "../constructs/api-deploy-construct";
 
 export interface PipelineStackProps extends cdk.StackProps {
   pipelineName: string;
@@ -22,13 +23,19 @@ export class PipelineStack extends cdk.Stack {
       },
     );
 
-    new BaseDeploymentConstruct(this, "BaseDeployment", {
+    const baseDeployment = new BaseDeploymentConstruct(this, "BaseDeployment", {
       pipelineName: props.pipelineName,
       githubRepoOwner: props.githubRepoOwner,
       githubRepoName: props.githubRepoName,
       codeConnectionArn: props.codeConnectionArn,
       envVariablesSecret: envVariablesSecret,
       branch: props.branch,
+    });
+
+    new ApiDeployConstruct(this, "ApiDeployment", {
+      deploymentSecret: envVariablesSecret,
+      pipeline: baseDeployment.pipeline,
+      codePath: "lambda",
     });
 
     new cdk.CfnOutput(this, "PipelineName", {
