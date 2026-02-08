@@ -40,6 +40,18 @@ export default class ApiDeployConstruct extends Construct {
       }),
     );
 
+    apiLambdaFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "cloudformation:DeleteStack",
+          "cloudformation:DescribeStacks",
+        ],
+        resources: [
+          `arn:aws:cloudformation:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:stack/blueprint-*-website-stack/*`,
+        ],
+      }),
+    );
+
     const api = new apigateway.RestApi(this, "ApiDeployGateway", {
       description: "API Gateway for deployment trigger",
     });
@@ -93,10 +105,11 @@ export default class ApiDeployConstruct extends Construct {
           title: "DeleteDeployRequest",
           type: apigateway.JsonSchemaType.OBJECT,
           properties: {
+            name: { type: apigateway.JsonSchemaType.STRING },
             githubRepositoryName: { type: apigateway.JsonSchemaType.STRING },
             subdomain: { type: apigateway.JsonSchemaType.STRING },
           },
-          required: ["githubRepositoryName", "subdomain"],
+          required: ["name", "githubRepositoryName", "subdomain"],
         },
       },
     );

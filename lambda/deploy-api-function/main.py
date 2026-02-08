@@ -166,9 +166,7 @@ def _handle_delete(event: DeployDeleteRequest, oauth_token: str) -> Dict[str, An
     )
     try:
         cf_service = CloudFormationService(cloudformation_client)
-        cf_service.destroy_stack(
-            stack_name=STACK_NAME_TEMPLATE.format(event.githubRepositoryName)
-        )
+        cf_service.destroy_stack(stack_name=STACK_NAME_TEMPLATE.format(event.name))
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json"},
