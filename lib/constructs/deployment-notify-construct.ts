@@ -57,7 +57,10 @@ export default class DeploymentNotifyConstruct extends Construct {
 
     githubUpdaterLambda.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ["cloudformation:DescribeStacks"],
+        actions: [
+          "cloudformation:DescribeStacks",
+          "cloudformation:DescribeStackResources",
+        ],
         resources: ["*"],
       }),
     );
