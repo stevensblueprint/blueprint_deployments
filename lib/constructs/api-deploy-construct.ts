@@ -104,7 +104,8 @@ export default class ApiDeployConstruct extends Construct {
         },
       },
     );
-
+    const deploymentByExecutionId =
+      deploymentResource.addResource("{executionId}");
     const pollReuquestModel = new apigateway.Model(
       this,
       "PollDeployRequestModel",
@@ -115,7 +116,10 @@ export default class ApiDeployConstruct extends Construct {
           schema: apigateway.JsonSchemaVersion.DRAFT4,
           title: "PollDeployRequest",
           type: apigateway.JsonSchemaType.OBJECT,
-          properties: {},
+          properties: {
+            executionId: { type: apigateway.JsonSchemaType.STRING },
+          },
+          required: ["executionId"],
         },
       },
     );
@@ -144,6 +148,28 @@ export default class ApiDeployConstruct extends Construct {
       {
         requestModels: { "application/json": deleteRequestModel },
         requestValidator,
+      },
+    );
+
+    deploymentByExecutionId.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(apiLambdaFunction),
+      {
+        requestParameters: {
+          "method.request.path.executionId": true,
+        },
+        requestValidator: requestValidator,
+        methodResponses: [
+          {
+            statusCode: "200",
+            responseModels: {
+              "application/json": pollReuquestModel,
+            },
+          },
+          { statusCode: "400" },
+          { statusCode: "404" },
+          { statusCode: "500" },
+        ],
       },
     );
 
