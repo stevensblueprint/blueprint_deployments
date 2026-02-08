@@ -58,6 +58,11 @@ export default class ApiDeployConstruct extends Construct {
 
     const api = new apigateway.RestApi(this, "ApiDeployGateway", {
       description: "API Gateway for deployment trigger",
+      defaultCorsPreflightOptions: {
+        allowOrigins: apigateway.Cors.ALL_ORIGINS,
+        allowMethods: apigateway.Cors.ALL_METHODS,
+        allowHeaders: apigateway.Cors.DEFAULT_HEADERS,
+      },
     });
 
     const deployResource = api.root.addResource("deploy");

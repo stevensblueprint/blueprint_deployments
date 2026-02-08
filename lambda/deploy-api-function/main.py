@@ -29,6 +29,10 @@ ORGANIZATION_NAME = "stevensblueprint"
 STACK_NAME_TEMPLATE = "blueprint-{}-website-stack"
 
 
+def _get_cors_headers(event: Dict[str, Any]) -> Dict[str, str]:
+    return {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"}
+
+
 def _normalize_route(event: Dict[str, Any]) -> Tuple[str, str]:
     method = (event.get("httpMethod") or "").upper()
     path = (event.get("resource") or event.get("path") or "").lower()
@@ -79,12 +83,12 @@ def _load_infra_config() -> InfraConfig:
         raise
 
 
-def _start_pipeline() -> Dict[str, Any]:
+def _start_pipeline(event) -> Dict[str, Any]:
     response = codepipeline_client.start_pipeline_execution(name=PIPELINE_NAME)
     execution_id = response.get("pipelineExecutionId", "")
     return {
         "statusCode": 200,
-        "headers": {"Content-Type": "application/json"},
+        "headers": _get_cors_headers(event),
         "body": json.dumps(
             {
                 "message": "Pipeline execution started.",
@@ -94,12 +98,15 @@ def _start_pipeline() -> Dict[str, Any]:
     }
 
 
-def _handle_deploy(event: DeployCreateRequest, oauth_token: str) -> Dict[str, Any]:
+def _handle_deploy(
+    raw_event, event: DeployCreateRequest, oauth_token: str
+) -> Dict[str, Any]:
     try:
         infra_config = _load_infra_config()
     except Exception as e:
         return {
             "statusCode": 500,
+            "headers": _get_cors_headers(raw_event),
             "body": f"Error loading secret: {str(e)}",
         }
 
@@ -126,21 +133,25 @@ def _handle_deploy(event: DeployCreateRequest, oauth_token: str) -> Dict[str, An
     )
 
     try:
-        return _start_pipeline()
+        return _start_pipeline(event)
     except Exception as e:
         logger.error("Error starting pipeline: %s", str(e))
         return {
             "statusCode": 500,
+            "headers": _get_cors_headers(raw_event),
             "body": f"Error starting pipeline: {str(e)}",
         }
 
 
-def _handle_delete(event: DeployDeleteRequest, oauth_token: str) -> Dict[str, Any]:
+def _handle_delete(
+    raw_event, event: DeployDeleteRequest, oauth_token: str
+) -> Dict[str, Any]:
     try:
         infra_config = _load_infra_config()
     except Exception as e:
         return {
             "statusCode": 500,
+            "headers": _get_cors_headers(raw_event),
             "body": f"Error loading secret: {str(e)}",
         }
 
@@ -155,6 +166,7 @@ def _handle_delete(event: DeployDeleteRequest, oauth_token: str) -> Dict[str, An
     if len(updated_websites) == len(infra_config.WEBSITES):
         return {
             "statusCode": 404,
+            "headers": _get_cors_headers(raw_event),
             "body": "Deployment not found.",
         }
     infra_config = replace(infra_config, WEBSITES=updated_websites)
@@ -170,6 +182,7 @@ def _handle_delete(event: DeployDeleteRequest, oauth_token: str) -> Dict[str, An
         logger.error("Error deleting GitHub repository: %s", str(e))
         return {
             "statusCode": 500,
+            "headers": _get_cors_headers(raw_event),
             "body": f"Error deleting GitHub repository: {str(e)}",
         }
 
@@ -182,18 +195,19 @@ def _handle_delete(event: DeployDeleteRequest, oauth_token: str) -> Dict[str, An
         cf_service.destroy_stack(stack_name=STACK_NAME_TEMPLATE.format(event.name))
         return {
             "statusCode": 200,
-            "headers": {"Content-Type": "application/json"},
+            "headers": _get_cors_headers(raw_event),
             "body": json.dumps({"message": "Deployment deletion started."}),
         }
     except Exception as e:
         logger.error("Error deleting deployment: %s", str(e))
         return {
             "statusCode": 500,
+            "headers": _get_cors_headers(raw_event),
             "body": f"Error deleting deployment: {str(e)}",
         }
 
 
-def _handle_poll(execution_id: str) -> Dict[str, Any]:
+def _handle_poll(event, execution_id: str) -> Dict[str, Any]:
     try:
         execution_response = codepipeline_client.get_pipeline_execution(
             pipelineName=PIPELINE_NAME, pipelineExecutionId=execution_id
@@ -201,12 +215,14 @@ def _handle_poll(execution_id: str) -> Dict[str, Any]:
     except codepipeline_client.exceptions.PipelineExecutionNotFoundException:
         return {
             "statusCode": 404,
+            "headers": _get_cors_headers(event),
             "body": "Deployment not found.",
         }
     except Exception as e:
         logger.error("Error fetching pipeline execution: %s", str(e))
         return {
             "statusCode": 500,
+            "headers": _get_cors_headers(event),
             "body": f"Error fetching pipeline execution: {str(e)}",
         }
 
@@ -248,7 +264,7 @@ def _handle_poll(execution_id: str) -> Dict[str, Any]:
     )
     return {
         "statusCode": 200,
-        "headers": {"Content-Type": "application/json"},
+        "headers": _get_cors_headers(event),
         "body": json.dumps(asdict(deployment_status)),
     }
 
@@ -264,26 +280,30 @@ def handler(event: Dict[str, Any], ctx) -> Dict[str, Any]:
         if request.is_empty():
             return {
                 "statusCode": 400,
+                "headers": _get_cors_headers(event),
                 "body": "Invalid request body.",
             }
-        return _handle_deploy(request, oauth_token)
+        return _handle_deploy(event, request, oauth_token)
     if method == "DELETE" and path.endswith("/deployment"):
         request = DeployDeleteRequest.from_event(event)
         if request.is_empty():
             return {
                 "statusCode": 400,
+                "headers": _get_cors_headers(event),
                 "body": "Invalid request body.",
             }
-        return _handle_delete(request, oauth_token)
+        return _handle_delete(event, request, oauth_token)
     if method == "GET" and "/deployment/" in path:
         execution_id = _get_execution_id(event, path)
         if not execution_id:
             return {
                 "statusCode": 400,
+                "headers": _get_cors_headers(event),
                 "body": "Missing executionId.",
             }
-        return _handle_poll(execution_id)
+        return _handle_poll(event, execution_id)
     return {
         "statusCode": 404,
+        "headers": _get_cors_headers(event),
         "body": "Not found.",
     }
