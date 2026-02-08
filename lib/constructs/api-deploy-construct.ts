@@ -67,6 +67,7 @@ export default class ApiDeployConstruct extends Construct {
 
     const deployResource = api.root.addResource("deploy");
     const deploymentResource = api.root.addResource("deployment");
+    const deploymentsResource = api.root.addResource("deployments");
 
     const requestModel = new apigateway.Model(this, "DeployRequestModel", {
       restApi: api,
@@ -160,6 +161,23 @@ export default class ApiDeployConstruct extends Construct {
       },
     );
 
+    deploymentsResource.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(apiLambdaFunction),
+      {
+        requestValidator: new apigateway.RequestValidator(
+          this,
+          "ListDeploymentsRequestValidator",
+          {
+            restApi: api,
+            validateRequestBody: false,
+            validateRequestParameters: false,
+          },
+        ),
+        methodResponses: [{ statusCode: "200" }, { statusCode: "500" }],
+      },
+    );
+
     deploymentByExecutionId.addMethod(
       "GET",
       new apigateway.LambdaIntegration(apiLambdaFunction),
@@ -192,6 +210,10 @@ export default class ApiDeployConstruct extends Construct {
 
     new cdk.CfnOutput(this, "ApiDeploymentEndpoint", {
       value: `${api.url}deployment`,
+    });
+
+    new cdk.CfnOutput(this, "ApiDeploymentsEndpoint", {
+      value: `${api.url}deployments`,
     });
   }
 }

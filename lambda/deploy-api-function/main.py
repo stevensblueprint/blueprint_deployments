@@ -269,6 +269,24 @@ def _handle_poll(event, execution_id: str) -> Dict[str, Any]:
     }
 
 
+def _handle_list_deployments(event: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        infra_config = _load_infra_config()
+        websites = [asdict(w) for w in infra_config.WEBSITES]
+        return {
+            "statusCode": 200,
+            "headers": _get_cors_headers(event),
+            "body": json.dumps(websites),
+        }
+    except Exception as e:
+        logger.error("Error listing deployments: %s", str(e))
+        return {
+            "statusCode": 500,
+            "headers": _get_cors_headers(event),
+            "body": f"Error listing deployments: {str(e)}",
+        }
+
+
 def handler(event: Dict[str, Any], ctx) -> Dict[str, Any]:
     logger.info("Received event: %s", event)
     method, path = _normalize_route(event)
@@ -302,6 +320,8 @@ def handler(event: Dict[str, Any], ctx) -> Dict[str, Any]:
                 "body": "Missing executionId.",
             }
         return _handle_poll(event, execution_id)
+    if method == "GET" and path.endswith("/deployments"):
+        return _handle_list_deployments(event)
     return {
         "statusCode": 404,
         "headers": _get_cors_headers(event),
