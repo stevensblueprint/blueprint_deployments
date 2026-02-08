@@ -35,7 +35,11 @@ export default class ApiDeployConstruct extends Construct {
 
     apiLambdaFunction.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ["codepipeline:StartPipelineExecution"],
+        actions: [
+          "codepipeline:StartPipelineExecution",
+          "codepipeline:GetPipelineState",
+          "codepipeline:GetPipelineExecution",
+        ],
         resources: [props.pipeline.pipelineArn],
       }),
     );
