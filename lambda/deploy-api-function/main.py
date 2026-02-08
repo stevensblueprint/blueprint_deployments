@@ -234,30 +234,61 @@ def _handle_poll(event, execution_id: str) -> Dict[str, Any]:
 
     stages: List[StageStatus] = []
     try:
-        state_response = codepipeline_client.get_pipeline_state(
-            pipelineName=PIPELINE_NAME
+        action_executions = codepipeline_client.list_action_executions(
+            pipelineName=PIPELINE_NAME, filter={"pipelineExecutionId": execution_id}
         )
-        for stage_state in state_response.get("stageStates", []):
-            latest = stage_state.get("latestExecution")
-            if not latest:
-                continue
-            if latest.get("pipelineExecutionId") != execution_id:
-                continue
-            last_update = latest.get("lastStatusChange")
+
+        stage_map = {}
+        for action in action_executions.get("actionExecutionDetails", []):
+            stage_name = action.get("stageName")
+            action_status = action.get("status", "UNKNOWN")
+            last_update = action.get("lastUpdateTime")
+
+            if stage_name not in stage_map:
+                stage_map[stage_name] = {
+                    "status": action_status,
+                    "lastUpdate": last_update,
+                    "actions": [],
+                }
+
+            stage_map[stage_name]["actions"].append(
+                {"status": action_status, "lastUpdate": last_update}
+            )
+            current_stage_status = stage_map[stage_name]["status"]
+            if action_status == "Failed" or current_stage_status == "Failed":
+                stage_map[stage_name]["status"] = "Failed"
+            elif action_status == "InProgress" and current_stage_status != "Failed":
+                stage_map[stage_name]["status"] = "InProgress"
+            elif action_status == "Succeeded" and current_stage_status not in (
+                "Failed",
+                "InProgress",
+            ):
+                stage_map[stage_name]["status"] = "Succeeded"
+            if last_update and (
+                not stage_map[stage_name]["lastUpdate"]
+                or last_update > stage_map[stage_name]["lastUpdate"]
+            ):
+                stage_map[stage_name]["lastUpdate"] = last_update
+
+        for stage_name, details in stage_map.items():
+            last_update = details["lastUpdate"]
             if last_update is not None:
                 try:
                     last_update = last_update.isoformat()
                 except Exception:
                     last_update = str(last_update)
+
             stages.append(
                 StageStatus(
-                    name=stage_state.get("stageName", ""),
-                    status=latest.get("status", "UNKNOWN"),
+                    name=stage_name,
+                    status=details["status"],
                     lastUpdate=last_update,
                 )
             )
+        stages.sort(key=lambda s: s.name)
+
     except Exception as e:
-        logger.warning("Error fetching pipeline state: %s", str(e))
+        logger.warning("Error fetching action executions: %s", str(e))
 
     deployment_status = DeploymentStatus(
         executionId=execution_id, status=status, stages=stages, error=error

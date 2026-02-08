@@ -39,6 +39,7 @@ export default class ApiDeployConstruct extends Construct {
           "codepipeline:StartPipelineExecution",
           "codepipeline:GetPipelineState",
           "codepipeline:GetPipelineExecution",
+          "codepipeline:ListActionExecutions",
         ],
         resources: [props.pipeline.pipelineArn],
       }),
@@ -116,20 +117,34 @@ export default class ApiDeployConstruct extends Construct {
     );
     const deploymentByExecutionId =
       deploymentResource.addResource("{executionId}");
-    const pollReuquestModel = new apigateway.Model(
+    const deploymentStatusModel = new apigateway.Model(
       this,
-      "PollDeployRequestModel",
+      "DeploymentStatusModel",
       {
         restApi: api,
         contentType: "application/json",
         schema: {
           schema: apigateway.JsonSchemaVersion.DRAFT4,
-          title: "PollDeployRequest",
+          title: "DeploymentStatus",
           type: apigateway.JsonSchemaType.OBJECT,
           properties: {
             executionId: { type: apigateway.JsonSchemaType.STRING },
+            status: { type: apigateway.JsonSchemaType.STRING },
+            stages: {
+              type: apigateway.JsonSchemaType.ARRAY,
+              items: {
+                type: apigateway.JsonSchemaType.OBJECT,
+                properties: {
+                  name: { type: apigateway.JsonSchemaType.STRING },
+                  status: { type: apigateway.JsonSchemaType.STRING },
+                  lastUpdate: { type: apigateway.JsonSchemaType.STRING },
+                },
+              },
+            },
+            url: { type: apigateway.JsonSchemaType.STRING },
+            error: { type: apigateway.JsonSchemaType.STRING },
           },
-          required: ["executionId"],
+          required: ["executionId", "status", "stages"],
         },
       },
     );
@@ -190,7 +205,7 @@ export default class ApiDeployConstruct extends Construct {
           {
             statusCode: "200",
             responseModels: {
-              "application/json": pollReuquestModel,
+              "application/json": deploymentStatusModel,
             },
           },
           { statusCode: "400" },
