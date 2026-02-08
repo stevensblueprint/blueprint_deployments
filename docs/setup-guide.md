@@ -50,11 +50,10 @@ CODE_CONNECTION_ARN=arn:aws:codestar-connections:us-east-1:123456789012:connecti
 
 After the initial deployment:
 
-1.  **Locate the API URL**: Check the CloudFormation outputs for `ApiDeploymentEndpoint`.
-2.  **Add GitHub OAuth Token**:
-    *   Go to AWS Secrets Manager.
-    *   Find the secret named `<PIPELINE_NAME>-github-oauth-token`.
-    *   Update the secret value (Plaintext) with your **GitHub PAT**. This is required for the Lambdas to interact with the GitHub API.
+1.  **Locate the API URL**: Check the CloudFormation outputs for `ApiDeployUrl`.
+2.  **Add Configuration and Secrets**:
+    *   **Infrastructure Config**: Find the secret named `<PIPELINE_NAME>-env-variables`. This secret stores the global configuration for the deployment system (account IDs, domain names, etc.) as well as the registry of deployed websites.
+    *   **GitHub OAuth Token**: Find the secret named `<PIPELINE_NAME>-github-oauth-token`. Update the secret value (Plaintext) with your **GitHub PAT**. This is required for the Lambdas to interact with the GitHub API.
 
 ## Troubleshooting
 

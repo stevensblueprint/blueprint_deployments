@@ -42,8 +42,80 @@ Triggers the creation of a new website deployment.
 
 ### Response
 *   **200 OK**: Deployment started successfully. Returns the `pipelineExecutionId`.
+    ```json
+    {
+      "message": "Pipeline execution started.",
+      "pipelineExecutionId": "a1b2c3d4-5678-90ab-cdef-123456789012"
+    }
+    ```
 *   **400 Bad Request**: Invalid JSON body.
 *   **500 Internal Server Error**: Failure to update secret or create repository.
+
+---
+
+## GET /deployments
+
+Lists all currently configured website deployments.
+
+### Request Body
+None.
+
+### Response
+*   **200 OK**: Returns a list of website configurations.
+    ```json
+    [
+      {
+        "name": "project-alpha",
+        "subdomain": "alpha",
+        "githubRepositoryName": "project-alpha-repo",
+        "githubBranchName": "main",
+        "requiresAuth": false,
+        "includeRootDomain": false
+      }
+    ]
+    ```
+*   **500 Internal Server Error**: Failure to load configuration.
+
+---
+
+## GET /deployment/{executionId}
+
+Polls the status of a specific deployment (CodePipeline execution).
+
+### Path Parameters
+| Parameter | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `executionId` | string | Yes | The ID returned by the `POST /deploy` request. |
+
+### Response
+*   **200 OK**: Returns the current status of the deployment.
+    ```json
+    {
+      "executionId": "a1b2c3d4-5678-90ab-cdef-123456789012",
+      "status": "Succeeded",
+      "stages": [
+        {
+          "name": "Source",
+          "status": "Succeeded",
+          "lastUpdate": "2026-02-08T12:00:00Z"
+        },
+        {
+          "name": "Build",
+          "status": "Succeeded",
+          "lastUpdate": "2026-02-08T12:05:00Z"
+        },
+        {
+          "name": "Deploy",
+          "status": "Succeeded",
+          "lastUpdate": "2026-02-08T12:10:00Z"
+        }
+      ],
+      "url": "https://alpha.example.com",
+      "error": null
+    }
+    ```
+*   **404 Not Found**: The specified execution ID was not found.
+*   **500 Internal Server Error**: Failure to fetch pipeline status.
 
 ---
 

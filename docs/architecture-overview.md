@@ -7,8 +7,9 @@ The `blueprint_deployments` project is an automated infrastructure-as-code syste
 The system operates as a **Control Plane** that manages multiple independent website deployments.
 
 1.  **API Gateway**: The entry point for external systems to request new deployments or deletions.
-2.  **State Management**: The configuration for all deployed websites is stored in a single JSON object within **AWS Secrets Manager**.
-3.  **CI/CD Pipeline**: An **AWS CodePipeline** (defined in `PipelineStack`) is triggered whenever the configuration changes. It dynamically generates CloudFormation stacks for each website defined in the configuration.
+2.  **State Management**: The configuration for all deployed websites is stored in a single JSON object within **AWS Secrets Manager** (the `Infrastructure Config` secret).
+3.  **Observability**: The system provides endpoints to list all active deployments and poll the real-time status of the provisioning pipeline, including stage-by-stage updates.
+4.  **CI/CD Pipeline**: An **AWS CodePipeline** (defined in `PipelineStack`) is triggered whenever the configuration changes. It dynamically generates CloudFormation stacks for each website defined in the configuration.
 4.  **GitHub Integration**:
     *   **Repo Creation**: The system automatically creates new GitHub repositories for each website based on a template.
     *   **Secret Injection**: Upon successful infrastructure provisioning, the system injects necessary AWS credentials and configuration (e.g., S3 Bucket Name, CloudFront ID) into the GitHub repository's secrets.

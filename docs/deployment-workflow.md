@@ -11,7 +11,8 @@ This document details the end-to-end workflow of the `blueprint_deployments` sys
     *   **Create Repo**: Calls the GitHub API to create a new repository from a template.
     *   **Update State**: Adds the new website definition to the JSON config object.
     *   **Save State**: Puts the updated JSON back into Secrets Manager.
-    *   **Trigger Pipeline**: Calls `codepipeline:StartPipelineExecution`.
+    *   **Trigger Pipeline**: Calls `codepipeline:StartPipelineExecution` and returns the `pipelineExecutionId` to the user.
+4.  **Polling (Optional)**: The user can use the `GET /deployment/{executionId}` endpoint to monitor the progress of the infrastructure provisioning.
 
 ## Phase 2: Infrastructure Provisioning (The CDK Pipeline)
 
