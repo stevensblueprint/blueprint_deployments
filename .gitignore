@@ -10,3 +10,6 @@ cdk.out
 # env files
 .env
 .env.local
+
+# Secret configurations
+config.json
