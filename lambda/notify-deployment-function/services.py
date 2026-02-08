@@ -49,9 +49,21 @@ class GithubService:
             repo_name,
             key_res.status_code,
         )
+
+        if key_res.status_code != 200:
+            logger.error(
+                "Failed to fetch public key for repo '%s': %s - %s",
+                repo_name,
+                key_res.status_code,
+                key_res.text,
+            )
+            key_res.raise_for_status()
+
         key_data = key_res.json()
         encrypted_value = self._encrypt_secret(key_data["key"], value)
-        logger.info("Updating GitHub secret '%s' for repo '%s'.", secret_name, repo_name)
+        logger.info(
+            "Updating GitHub secret '%s' for repo '%s'.", secret_name, repo_name
+        )
         put_res = self.session.put(
             f"https://api.github.com/repos/{repo_name}/actions/secrets/{secret_name}",
             json={"encrypted_value": encrypted_value, "key_id": key_data["key_id"]},
@@ -63,12 +75,22 @@ class GithubService:
             put_res.status_code,
         )
 
-    def trigger_workflow(self, repo_name: str, workflow_file: str = "main.yml"):
+        if put_res.status_code not in [201, 204]:
+            logger.error(
+                "Failed to update secret '%s' for repo '%s': %s - %s",
+                secret_name,
+                repo_name,
+                put_res.status_code,
+                put_res.text,
+            )
+            put_res.raise_for_status()
+
         logger.info(
-            "Triggering workflow '%s' for repo '%s'.",
-            workflow_file,
-            repo_name,
+            "Successfully updated secret '%s' for repo '%s'.", secret_name, repo_name
         )
+
+    def trigger_workflow(self, repo_name: str, workflow_file: str = "main.yml"):
+        logger.info("Triggering workflow '%s' for repo '%s'.", workflow_file, repo_name)
         res = self.session.post(
             f"https://api.github.com/repos/{repo_name}/actions/workflows/{workflow_file}/dispatches",
             json={"ref": "main"},
@@ -78,4 +100,11 @@ class GithubService:
             repo_name,
             res.status_code,
         )
+
+        if res.status_code != 204:
+            logger.error(
+                "Failed to trigger workflow: %s - %s", res.status_code, res.text
+            )
+            res.raise_for_status()
+
         return res

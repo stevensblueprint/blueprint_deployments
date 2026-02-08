@@ -59,12 +59,43 @@ def handler(event, context):
     stack = response["Stacks"][0]
     outputs = {o["OutputKey"]: o["OutputValue"] for o in stack.get("Outputs", [])}
     logger.info("Stack outputs loaded: %s", list(outputs.keys()))
+    resources_response = cfn.describe_stack_resources(StackName=stack_name)
+    resources = {
+        r["LogicalResourceId"]: r["PhysicalResourceId"]
+        for r in resources_response["StackResources"]
+    }
+    logger.info("Stack resources loaded: %s", list(resources.keys()))
+
+    def find_resource_by_type(resource_type: str) -> str:
+        for r in resources_response["StackResources"]:
+            if r["ResourceType"] == resource_type:
+                logger.info(
+                    "Found resource of type '%s': LogicalId='%s', PhysicalId='%s'",
+                    resource_type,
+                    r["LogicalResourceId"],
+                    r["PhysicalResourceId"],
+                )
+                return r["PhysicalResourceId"]
+        return ""
+
+    s3_bucket = outputs.get("S3BucketName") or find_resource_by_type("AWS::S3::Bucket")
+    distribution_id = outputs.get("CloudFrontDistributionId") or find_resource_by_type(
+        "AWS::CloudFront::Distribution"
+    )
+
     secret_map = {
-        "S3_BUCKET": outputs.get("S3BucketName"),
-        "DISTRIBUTION_ID": outputs.get("CloudFrontDistributionId"),
+        "S3_BUCKET": s3_bucket,
+        "DISTRIBUTION_ID": distribution_id,
         "AWS_REGION": load_safe_env("AWS_REGION"),
         "AWS_ACCOUNT_ID": context.invoked_function_arn.split(":")[4],
     }
+
+    logger.info(
+        "Resolved secret values: S3_BUCKET=%s, DISTRIBUTION_ID=%s",
+        s3_bucket,
+        distribution_id,
+    )
+
     infra_config = _load_infra_config()
     website_name = stack_name.replace("blueprint-", "").replace("-website-stack", "")
     logger.info("Resolved website name '%s' from stack '%s'.", website_name, stack_name)
@@ -90,7 +121,9 @@ def handler(event, context):
 
     for key, val in secret_map.items():
         if val:
-            logger.info("Updating GitHub secret '%s' for repo '%s'.", key, repo_full_name)
+            logger.info(
+                "Updating GitHub secret '%s' for repo '%s'.", key, repo_full_name
+            )
             gh.create_or_update_secret(repo_full_name, key, val)
         else:
             logger.warning(
