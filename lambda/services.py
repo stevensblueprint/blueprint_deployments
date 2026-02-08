@@ -21,8 +21,10 @@ class GithubService:
         description: str = "Repo created from a template",
         include_all_branches: bool = False,
     ) -> Dict[str, Any]:
-        template_owner, template_repo = self._resolve_template_owner_and_repo(template)
         owner, name = self._resolve_target_owner_and_name(repo_name)
+        template_owner, template_repo = self._resolve_template_owner_and_repo(
+            template, default_owner=owner
+        )
 
         url = f"{self.api_base}/repos/{template_owner}/{template_repo}/generate"
         payload = {
@@ -73,7 +75,9 @@ class GithubService:
             )
         return owner_name, repo_name
 
-    def _resolve_template_owner_and_repo(self, template: Template) -> Tuple[str, str]:
+    def _resolve_template_owner_and_repo(
+        self, template: Template, default_owner: str = ""
+    ) -> Tuple[str, str]:
         template_value = template.value
         if "/" in template_value:
             return tuple(template_value.split("/", 1))  # type: ignore[return-value]
@@ -81,6 +85,8 @@ class GithubService:
         template_owner = os.getenv("GITHUB_TEMPLATE_OWNER", "").strip()
         if not template_owner:
             template_owner = os.getenv("GITHUB_OWNER", "").strip()
+        if not template_owner:
+            template_owner = (default_owner or "").strip()
         if not template_owner:
             raise ValueError(
                 "GITHUB_TEMPLATE_OWNER or GITHUB_OWNER is required to resolve template."

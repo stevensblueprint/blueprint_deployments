@@ -1,10 +1,16 @@
 import boto3
 import json
 import logging
-from dataclasses import replace
+from dataclasses import replace, asdict
 from typing import Dict, Any, Tuple
-from utils import load_safe_env, _parse_request_body
-from models import InfraConfig, WebsiteConfig, Template
+from utils import load_safe_env, get_oauth_token_from_secret_arn
+from models import (
+    InfraConfig,
+    WebsiteConfig,
+    Template,
+    DeployCreateRequest,
+    DeployDeleteRequest,
+)
 from services import GithubService, CloudFormationService
 
 logger = logging.getLogger()
@@ -16,7 +22,7 @@ cloudformation_client = boto3.client("cloudformation")
 
 DEPLOYMENT_SECRET_ARN = load_safe_env("DEPLOYMENT_SECRET_ARN")
 PIPELINE_NAME = load_safe_env("PIPELINE_NAME")
-GITHUB_OAUTH_TOKEN = load_safe_env("GITHUB_OAUTH_TOKEN")
+GITHUB_OAUTH_TOKEN_ARN = load_safe_env("GITHUB_OAUTH_TOKEN_ARN")
 ORGANIZATION_NAME = "stevensblueprint"
 STACK_NAME_TEMPLATE = "blueprint-{}-website-stack"
 
@@ -36,14 +42,25 @@ def _load_infra_config() -> InfraConfig:
         secret_value_response = secrets_client.get_secret_value(
             SecretId=DEPLOYMENT_SECRET_ARN
         )
-        secret_string = secret_value_response.get("SecretString", "")
+        logger.info(
+            "Successfully retrieved secret value from Secrets Manager.%s",
+            secret_value_response,
+        )
+        secret_string = secret_value_response.get("SecretString")
+        if not secret_string and secret_value_response.get("SecretBinary"):
+            secret_string = secret_value_response.get("SecretBinary", "").decode(
+                "utf-8"
+            )
         logger.info("Successfully retrieved secret.")
     except Exception as e:
         logger.error("Error retrieving secret: %s", str(e))
         raise
 
     try:
-        return InfraConfig.from_dict(json.loads(secret_string or "{}"))
+        normalized = (secret_string or "").strip()
+        if not normalized:
+            normalized = "{}"
+        return InfraConfig.from_dict(json.loads(normalized))
     except Exception as e:
         logger.error("Error parsing secret JSON: %s", str(e))
         raise
@@ -64,21 +81,7 @@ def _start_pipeline() -> Dict[str, Any]:
     }
 
 
-def _handle_deploy(event: Dict[str, Any]) -> Dict[str, Any]:
-    try:
-        payload = _parse_request_body(event)
-        if not payload:
-            raise ValueError("Request body is required.")
-        logger.info("Parsed request body: %s", payload)
-        new_website_config = WebsiteConfig.from_dict(payload)
-        logger.info("Parsed new website config: %s", new_website_config)
-    except Exception as e:
-        logger.error("Invalid request body: %s", str(e))
-        return {
-            "statusCode": 400,
-            "body": "Invalid request body.",
-        }
-
+def _handle_deploy(event: DeployCreateRequest, oauth_token: str) -> Dict[str, Any]:
     try:
         infra_config = _load_infra_config()
     except Exception as e:
@@ -88,24 +91,25 @@ def _handle_deploy(event: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     logger.info("Creating github repository with config: %s", infra_config)
-    github_service = GithubService(token=GITHUB_OAUTH_TOKEN)
+    github_service = GithubService(token=oauth_token)
     github_service.create_respository_from_template(
-        repo_name=f"{ORGANIZATION_NAME}/{new_website_config.githubRepositoryName}",
+        repo_name=f"{ORGANIZATION_NAME}/{event.githubRepositoryName}",
         template=Template.VITE,
         private=False,
     )
     logger.info(
         "Successfully created GitHub repository: %s/%s",
         ORGANIZATION_NAME,
-        new_website_config.githubRepositoryName,
+        event.githubRepositoryName,
     )
 
     infra_config = replace(
-        infra_config, WEBSITES=[*infra_config.WEBSITES, new_website_config]
+        infra_config,
+        WEBSITES=[*infra_config.WEBSITES, WebsiteConfig.from_dict(event.__dict__)],
     )
     logger.info("Updated infrastructure config: %s", infra_config)
     secrets_client.put_secret_value(
-        SecretId=DEPLOYMENT_SECRET_ARN, SecretString=json.dumps(infra_config.__dict__)
+        SecretId=DEPLOYMENT_SECRET_ARN, SecretString=json.dumps(infra_config.to_dict())
     )
 
     try:
@@ -118,21 +122,7 @@ def _handle_deploy(event: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 
-def _handle_delete(event: Dict[str, Any]) -> Dict[str, Any]:
-    try:
-        payload = _parse_request_body(event)
-        if not payload:
-            raise ValueError("Request body is required.")
-        logger.info("Parsed request body: %s", payload)
-        github_repository_name = payload["githubRepositoryName"]
-        subdomain = payload["subdomain"]
-    except Exception as e:
-        logger.error("Invalid request body: %s", str(e))
-        return {
-            "statusCode": 400,
-            "body": "Invalid request body.",
-        }
-
+def _handle_delete(event: DeployDeleteRequest, oauth_token: str) -> Dict[str, Any]:
     try:
         infra_config = _load_infra_config()
     except Exception as e:
@@ -145,8 +135,8 @@ def _handle_delete(event: Dict[str, Any]) -> Dict[str, Any]:
         website
         for website in infra_config.WEBSITES
         if not (
-            website.githubRepositoryName == github_repository_name
-            and website.subdomain == subdomain
+            website.githubRepositoryName == event.githubRepositoryName
+            and website.subdomain == event.subdomain
         )
     ]
     if len(updated_websites) == len(infra_config.WEBSITES):
@@ -156,10 +146,10 @@ def _handle_delete(event: Dict[str, Any]) -> Dict[str, Any]:
         }
     infra_config = replace(infra_config, WEBSITES=updated_websites)
 
-    github_service = GithubService(token=GITHUB_OAUTH_TOKEN)
+    github_service = GithubService(token=oauth_token)
     try:
         deleted = github_service.delete_repository(
-            repo_name=f"{ORGANIZATION_NAME}/{github_repository_name}"
+            repo_name=f"{ORGANIZATION_NAME}/{event.githubRepositoryName}"
         )
         if not deleted:
             logger.warning("GitHub repository not found for deletion.")
@@ -172,12 +162,12 @@ def _handle_delete(event: Dict[str, Any]) -> Dict[str, Any]:
 
     logger.info("Updated infrastructure config: %s", infra_config)
     secrets_client.put_secret_value(
-        SecretId=DEPLOYMENT_SECRET_ARN, SecretString=json.dumps(infra_config.__dict__)
+        SecretId=DEPLOYMENT_SECRET_ARN, SecretString=json.dumps(infra_config.to_dict())
     )
     try:
         cf_service = CloudFormationService(cloudformation_client)
         cf_service.destroy_stack(
-            stack_name=STACK_NAME_TEMPLATE.format(github_repository_name)
+            stack_name=STACK_NAME_TEMPLATE.format(event.githubRepositoryName)
         )
         return {
             "statusCode": 200,
@@ -192,13 +182,28 @@ def _handle_delete(event: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 
-def handler(event, ctx) -> Dict[str, Any]:
+def handler(event: Dict[str, Any], ctx) -> Dict[str, Any]:
     logger.info("Received event: %s", event)
     method, route = _normalize_route(event)
+    oauth_token = get_oauth_token_from_secret_arn(
+        secrets_client, GITHUB_OAUTH_TOKEN_ARN
+    )
     if method == "POST" and route == "deploy":
-        return _handle_deploy(event)
+        request = DeployCreateRequest.from_event(event)
+        if request.is_empty():
+            return {
+                "statusCode": 400,
+                "body": "Invalid request body.",
+            }
+        return _handle_deploy(request, oauth_token)
     if method == "DELETE" and route == "deployment":
-        return _handle_delete(event)
+        request = DeployDeleteRequest.from_event(event)
+        if request.is_empty():
+            return {
+                "statusCode": 400,
+                "body": "Invalid request body.",
+            }
+        return _handle_delete(request, oauth_token)
     return {
         "statusCode": 404,
         "body": "Not found.",

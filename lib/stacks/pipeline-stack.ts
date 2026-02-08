@@ -7,7 +7,6 @@ export interface PipelineStackProps extends cdk.StackProps {
   pipelineName: string;
   githubRepoOwner: string;
   githubRepoName: string;
-  githubOauthTokenArn: string;
   codeConnectionArn: string;
   branch?: string;
 }
@@ -33,11 +32,20 @@ export class PipelineStack extends cdk.Stack {
       branch: props.branch,
     });
 
+    const githubOauthTokenSecret = new secretsmanager.Secret(
+      this,
+      "GitHubOAuthTokenSecret",
+      {
+        secretName: `${props.pipelineName}-github-oauth-token`,
+        description: "Secret to store GitHub OAuth token for API deployment",
+      },
+    );
+
     new ApiDeployConstruct(this, "ApiDeployment", {
       deploymentSecret: envVariablesSecret,
       pipeline: baseDeployment.pipeline,
       codePath: "lambda",
-      githubOauthTokenArn: props.githubOauthTokenArn,
+      githubOauthTokenArn: githubOauthTokenSecret,
     });
 
     new cdk.CfnOutput(this, "PipelineName", {

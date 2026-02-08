@@ -11,7 +11,7 @@ export interface ApiDeployConstructProps {
   deploymentSecret: secretsmanager.ISecret;
   pipeline: codepipeline.IPipeline;
   codePath: string;
-  githubOauthTokenArn: string;
+  githubOauthTokenArn: secretsmanager.ISecret;
 }
 
 export default class ApiDeployConstruct extends Construct {
@@ -25,11 +25,13 @@ export default class ApiDeployConstruct extends Construct {
       environment: {
         DEPLOYMENT_SECRET_ARN: props.deploymentSecret.secretArn,
         PIPELINE_NAME: props.pipeline.pipelineName,
-        GITHUB_OAUTH_TOKEN: props.githubOauthTokenArn,
+        GITHUB_OAUTH_TOKEN_ARN: props.githubOauthTokenArn.secretArn,
       },
     });
 
     props.deploymentSecret.grantWrite(apiLambdaFunction);
+    props.deploymentSecret.grantRead(apiLambdaFunction);
+    props.githubOauthTokenArn.grantRead(apiLambdaFunction);
 
     apiLambdaFunction.addToRolePolicy(
       new iam.PolicyStatement({

@@ -13,6 +13,5 @@ new PipelineStack(app, "blueprint-deployments-pipeline-stack", {
   pipelineName: config.pipelineName,
   githubRepoOwner: config.githubRepoOwner,
   githubRepoName: config.githubRepoName,
-  githubOauthTokenArn: config.githubOauthTokenArn,
   codeConnectionArn: config.codeConnectionArn,
 });
