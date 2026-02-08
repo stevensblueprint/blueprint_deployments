@@ -85,15 +85,6 @@ export default class ApiDeployConstruct extends Construct {
       },
     });
 
-    const requestValidator = new apigateway.RequestValidator(
-      this,
-      "DeployRequestValidator",
-      {
-        restApi: api,
-        validateRequestBody: true,
-      },
-    );
-
     const deleteRequestModel = new apigateway.Model(
       this,
       "DeleteDeployRequestModel",
@@ -111,6 +102,30 @@ export default class ApiDeployConstruct extends Construct {
           },
           required: ["name", "githubRepositoryName", "subdomain"],
         },
+      },
+    );
+
+    const pollReuquestModel = new apigateway.Model(
+      this,
+      "PollDeployRequestModel",
+      {
+        restApi: api,
+        contentType: "application/json",
+        schema: {
+          schema: apigateway.JsonSchemaVersion.DRAFT4,
+          title: "PollDeployRequest",
+          type: apigateway.JsonSchemaType.OBJECT,
+          properties: {},
+        },
+      },
+    );
+
+    const requestValidator = new apigateway.RequestValidator(
+      this,
+      "DeployRequestValidator",
+      {
+        restApi: api,
+        validateRequestBody: true,
       },
     );
 

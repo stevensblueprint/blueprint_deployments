@@ -170,7 +170,7 @@ def _handle_delete(event: DeployDeleteRequest, oauth_token: str) -> Dict[str, An
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"message": "Deployment deleted successfully."}),
+            "body": json.dumps({"message": "Deployment deletion started."}),
         }
     except Exception as e:
         logger.error("Error deleting deployment: %s", str(e))
