@@ -2,7 +2,7 @@ import boto3
 import json
 import logging
 from dataclasses import replace, asdict
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional, List
 from utils import load_safe_env, get_oauth_token_from_secret_arn
 from models import (
     InfraConfig,
@@ -10,6 +10,8 @@ from models import (
     Template,
     DeployCreateRequest,
     DeployDeleteRequest,
+    DeploymentStatus,
+    StageStatus,
 )
 from services import GithubService, CloudFormationService
 
@@ -33,8 +35,19 @@ def _normalize_route(event: Dict[str, Any]) -> Tuple[str, str]:
     path = path.split("?", 1)[0]
     if path.endswith("/"):
         path = path[:-1]
-    last_segment = path.rsplit("/", 1)[-1] if path else ""
-    return method, last_segment
+    if path and not path.startswith("/"):
+        path = f"/{path}"
+    return method, path
+
+
+def _get_execution_id(event: Dict[str, Any], path: str) -> str:
+    path_params = event.get("pathParameters") or {}
+    execution_id = path_params.get("executionId") or path_params.get("proxy")
+    if execution_id:
+        return execution_id
+    if "/deployment/" in path:
+        return path.rsplit("/", 1)[-1]
+    return ""
 
 
 def _load_infra_config() -> InfraConfig:
@@ -180,13 +193,73 @@ def _handle_delete(event: DeployDeleteRequest, oauth_token: str) -> Dict[str, An
         }
 
 
+def _handle_poll(execution_id: str) -> Dict[str, Any]:
+    try:
+        execution_response = codepipeline_client.get_pipeline_execution(
+            pipelineName=PIPELINE_NAME, pipelineExecutionId=execution_id
+        )
+    except codepipeline_client.exceptions.PipelineExecutionNotFoundException:
+        return {
+            "statusCode": 404,
+            "body": "Deployment not found.",
+        }
+    except Exception as e:
+        logger.error("Error fetching pipeline execution: %s", str(e))
+        return {
+            "statusCode": 500,
+            "body": f"Error fetching pipeline execution: {str(e)}",
+        }
+
+    pipeline_execution = execution_response.get("pipelineExecution", {})
+    status = pipeline_execution.get("status", "UNKNOWN")
+    error: Optional[str] = None
+    if status in ("Failed", "Stopped"):
+        error = pipeline_execution.get("statusSummary") or None
+
+    stages: List[StageStatus] = []
+    try:
+        state_response = codepipeline_client.get_pipeline_state(
+            pipelineName=PIPELINE_NAME
+        )
+        for stage_state in state_response.get("stageStates", []):
+            latest = stage_state.get("latestExecution")
+            if not latest:
+                continue
+            if latest.get("pipelineExecutionId") != execution_id:
+                continue
+            last_update = latest.get("lastStatusChange")
+            if last_update is not None:
+                try:
+                    last_update = last_update.isoformat()
+                except Exception:
+                    last_update = str(last_update)
+            stages.append(
+                StageStatus(
+                    name=stage_state.get("stageName", ""),
+                    status=latest.get("status", "UNKNOWN"),
+                    lastUpdate=last_update,
+                )
+            )
+    except Exception as e:
+        logger.warning("Error fetching pipeline state: %s", str(e))
+
+    deployment_status = DeploymentStatus(
+        executionId=execution_id, status=status, stages=stages, error=error
+    )
+    return {
+        "statusCode": 200,
+        "headers": {"Content-Type": "application/json"},
+        "body": json.dumps(asdict(deployment_status)),
+    }
+
+
 def handler(event: Dict[str, Any], ctx) -> Dict[str, Any]:
     logger.info("Received event: %s", event)
-    method, route = _normalize_route(event)
+    method, path = _normalize_route(event)
     oauth_token = get_oauth_token_from_secret_arn(
         secrets_client, GITHUB_OAUTH_TOKEN_ARN
     )
-    if method == "POST" and route == "deploy":
+    if method == "POST" and path.endswith("/deploy"):
         request = DeployCreateRequest.from_event(event)
         if request.is_empty():
             return {
@@ -194,7 +267,7 @@ def handler(event: Dict[str, Any], ctx) -> Dict[str, Any]:
                 "body": "Invalid request body.",
             }
         return _handle_deploy(request, oauth_token)
-    if method == "DELETE" and route == "deployment":
+    if method == "DELETE" and path.endswith("/deployment"):
         request = DeployDeleteRequest.from_event(event)
         if request.is_empty():
             return {
@@ -202,6 +275,14 @@ def handler(event: Dict[str, Any], ctx) -> Dict[str, Any]:
                 "body": "Invalid request body.",
             }
         return _handle_delete(request, oauth_token)
+    if method == "GET" and "/deployment/" in path:
+        execution_id = _get_execution_id(event, path)
+        if not execution_id:
+            return {
+                "statusCode": 400,
+                "body": "Missing executionId.",
+            }
+        return _handle_poll(execution_id)
     return {
         "statusCode": 404,
         "body": "Not found.",

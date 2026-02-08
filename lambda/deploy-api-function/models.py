@@ -1,5 +1,5 @@
 from dataclasses import dataclass, asdict
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from enum import Enum
 import json
 import base64
@@ -192,3 +192,19 @@ class InfraConfig:
             WEBSITES=[],
             NOTION_TOKEN="",
         )
+
+
+@dataclass(frozen=True)
+class StageStatus:
+    name: str
+    status: str
+    lastUpdate: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class DeploymentStatus:
+    executionId: str
+    status: str
+    stages: List[StageStatus]
+    url: Optional[str] = None
+    error: Optional[str] = None
