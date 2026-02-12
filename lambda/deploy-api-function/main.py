@@ -29,8 +29,21 @@ ORGANIZATION_NAME = "stevensblueprint"
 STACK_NAME_TEMPLATE = "blueprint-{}-website-stack"
 
 
-def _get_cors_headers(event: Dict[str, Any]) -> Dict[str, str]:
-    return {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"}
+def _get_cors_headers() -> Dict[str, str]:
+    return {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+    }
+
+
+def _build_response(status_code: int, body: Any) -> Dict[str, Any]:
+    return {
+        "statusCode": status_code,
+        "headers": _get_cors_headers(),
+        "body": json.dumps(body) if not isinstance(body, str) else body,
+    }
 
 
 def _normalize_route(event: Dict[str, Any]) -> Tuple[str, str]:
@@ -83,19 +96,13 @@ def _load_infra_config() -> InfraConfig:
         raise
 
 
-def _start_pipeline(event) -> Dict[str, Any]:
+def _start_pipeline() -> Dict[str, Any]:
     response = codepipeline_client.start_pipeline_execution(name=PIPELINE_NAME)
     execution_id = response.get("pipelineExecutionId", "")
-    return {
-        "statusCode": 200,
-        "headers": _get_cors_headers(event),
-        "body": json.dumps(
-            {
-                "message": "Pipeline execution started.",
-                "pipelineExecutionId": execution_id,
-            }
-        ),
-    }
+    return _build_response(
+        200,
+        {"message": "Pipeline execution started.", "pipelineExecutionId": execution_id},
+    )
 
 
 def _handle_deploy(
@@ -104,11 +111,7 @@ def _handle_deploy(
     try:
         infra_config = _load_infra_config()
     except Exception as e:
-        return {
-            "statusCode": 500,
-            "headers": _get_cors_headers(raw_event),
-            "body": f"Error loading secret: {str(e)}",
-        }
+        return _build_response(500, f"Error loading secret: {str(e)}")
 
     logger.info("Creating github repository with config: %s", infra_config)
     github_service = GithubService(token=oauth_token)
@@ -133,14 +136,10 @@ def _handle_deploy(
     )
 
     try:
-        return _start_pipeline(event)
+        return _start_pipeline()
     except Exception as e:
         logger.error("Error starting pipeline: %s", str(e))
-        return {
-            "statusCode": 500,
-            "headers": _get_cors_headers(raw_event),
-            "body": f"Error starting pipeline: {str(e)}",
-        }
+        return _build_response(500, f"Error starting pipeline: {str(e)}")
 
 
 def _handle_delete(
@@ -149,11 +148,7 @@ def _handle_delete(
     try:
         infra_config = _load_infra_config()
     except Exception as e:
-        return {
-            "statusCode": 500,
-            "headers": _get_cors_headers(raw_event),
-            "body": f"Error loading secret: {str(e)}",
-        }
+        return _build_response(500, f"Error loading secret: {str(e)}")
 
     updated_websites = [
         website
@@ -164,11 +159,7 @@ def _handle_delete(
         )
     ]
     if len(updated_websites) == len(infra_config.WEBSITES):
-        return {
-            "statusCode": 404,
-            "headers": _get_cors_headers(raw_event),
-            "body": "Deployment not found.",
-        }
+        return _build_response(404, "Deployment not found.")
     infra_config = replace(infra_config, WEBSITES=updated_websites)
 
     github_service = GithubService(token=oauth_token)
@@ -180,11 +171,7 @@ def _handle_delete(
             logger.warning("GitHub repository not found for deletion.")
     except Exception as e:
         logger.error("Error deleting GitHub repository: %s", str(e))
-        return {
-            "statusCode": 500,
-            "headers": _get_cors_headers(raw_event),
-            "body": f"Error deleting GitHub repository: {str(e)}",
-        }
+        return _build_response(500, f"Error deleting GitHub repository: {str(e)}")
 
     logger.info("Updated infrastructure config: %s", infra_config)
     secrets_client.put_secret_value(
@@ -193,18 +180,10 @@ def _handle_delete(
     try:
         cf_service = CloudFormationService(cloudformation_client)
         cf_service.destroy_stack(stack_name=STACK_NAME_TEMPLATE.format(event.name))
-        return {
-            "statusCode": 200,
-            "headers": _get_cors_headers(raw_event),
-            "body": json.dumps({"message": "Deployment deletion started."}),
-        }
+        return _build_response(200, {"message": "Deployment deletion started."})
     except Exception as e:
         logger.error("Error deleting deployment: %s", str(e))
-        return {
-            "statusCode": 500,
-            "headers": _get_cors_headers(raw_event),
-            "body": f"Error deleting deployment: {str(e)}",
-        }
+        return _build_response(500, f"Error deleting deployment: {str(e)}")
 
 
 def _handle_poll(event, execution_id: str) -> Dict[str, Any]:
@@ -213,18 +192,10 @@ def _handle_poll(event, execution_id: str) -> Dict[str, Any]:
             pipelineName=PIPELINE_NAME, pipelineExecutionId=execution_id
         )
     except codepipeline_client.exceptions.PipelineExecutionNotFoundException:
-        return {
-            "statusCode": 404,
-            "headers": _get_cors_headers(event),
-            "body": "Deployment not found.",
-        }
+        return _build_response(404, "Deployment not found.")
     except Exception as e:
         logger.error("Error fetching pipeline execution: %s", str(e))
-        return {
-            "statusCode": 500,
-            "headers": _get_cors_headers(event),
-            "body": f"Error fetching pipeline execution: {str(e)}",
-        }
+        return _build_response(500, f"Error fetching pipeline execution: {str(e)}")
 
     pipeline_execution = execution_response.get("pipelineExecution", {})
     status = pipeline_execution.get("status", "UNKNOWN")
@@ -293,68 +264,52 @@ def _handle_poll(event, execution_id: str) -> Dict[str, Any]:
     deployment_status = DeploymentStatus(
         executionId=execution_id, status=status, stages=stages, error=error
     )
-    return {
-        "statusCode": 200,
-        "headers": _get_cors_headers(event),
-        "body": json.dumps(asdict(deployment_status)),
-    }
+    return _build_response(200, asdict(deployment_status))
 
 
 def _handle_list_deployments(event: Dict[str, Any]) -> Dict[str, Any]:
     try:
         infra_config = _load_infra_config()
         websites = [asdict(w) for w in infra_config.WEBSITES]
-        return {
-            "statusCode": 200,
-            "headers": _get_cors_headers(event),
-            "body": json.dumps(websites),
-        }
+        return _build_response(200, websites)
     except Exception as e:
         logger.error("Error listing deployments: %s", str(e))
-        return {
-            "statusCode": 500,
-            "headers": _get_cors_headers(event),
-            "body": f"Error listing deployments: {str(e)}",
-        }
+        return _build_response(500, f"Error listing deployments: {str(e)}")
 
 
 def handler(event: Dict[str, Any], ctx) -> Dict[str, Any]:
-    logger.info("Received event: %s", event)
-    method, path = _normalize_route(event)
-    oauth_token = get_oauth_token_from_secret_arn(
-        secrets_client, GITHUB_OAUTH_TOKEN_ARN
-    )
-    if method == "POST" and path.endswith("/deploy"):
-        request = DeployCreateRequest.from_event(event)
-        if request.is_empty():
-            return {
-                "statusCode": 400,
-                "headers": _get_cors_headers(event),
-                "body": "Invalid request body.",
-            }
-        return _handle_deploy(event, request, oauth_token)
-    if method == "DELETE" and path.endswith("/deployment"):
-        request = DeployDeleteRequest.from_event(event)
-        if request.is_empty():
-            return {
-                "statusCode": 400,
-                "headers": _get_cors_headers(event),
-                "body": "Invalid request body.",
-            }
-        return _handle_delete(event, request, oauth_token)
-    if method == "GET" and "/deployment/" in path:
-        execution_id = _get_execution_id(event, path)
-        if not execution_id:
-            return {
-                "statusCode": 400,
-                "headers": _get_cors_headers(event),
-                "body": "Missing executionId.",
-            }
-        return _handle_poll(event, execution_id)
-    if method == "GET" and path.endswith("/deployments"):
-        return _handle_list_deployments(event)
-    return {
-        "statusCode": 404,
-        "headers": _get_cors_headers(event),
-        "body": "Not found.",
-    }
+    try:
+        logger.info("Received event: %s", event)
+        method, path = _normalize_route(event)
+
+        if method == "OPTIONS":
+            return _build_response(200, "OK")
+
+        oauth_token = get_oauth_token_from_secret_arn(
+            secrets_client, GITHUB_OAUTH_TOKEN_ARN
+        )
+        if method == "POST" and path.endswith("/deploy"):
+            request = DeployCreateRequest.from_event(event)
+            if request.is_empty():
+                return _build_response(400, "Invalid request body.")
+            return _handle_deploy(event, request, oauth_token)
+
+        if method == "DELETE" and path.endswith("/deployment"):
+            request = DeployDeleteRequest.from_event(event)
+            if request.is_empty():
+                return _build_response(400, "Invalid request body.")
+            return _handle_delete(event, request, oauth_token)
+
+        if method == "GET" and "/deployment/" in path:
+            execution_id = _get_execution_id(event, path)
+            if not execution_id:
+                return _build_response(400, "Missing executionId.")
+            return _handle_poll(event, execution_id)
+
+        if method == "GET" and path.endswith("/deployments"):
+            return _handle_list_deployments(event)
+
+        return _build_response(404, "Not found.")
+    except Exception as e:
+        logger.error("Unhandled exception in handler: %s", str(e), exc_info=True)
+        return _build_response(500, f"Internal server error: {str(e)}")
