@@ -10,6 +10,7 @@ from models import (
     Template,
     DeployCreateRequest,
     DeployDeleteRequest,
+    DeployUpdateRequest,
     DeploymentStatus,
     StageStatus,
 )
@@ -33,7 +34,7 @@ def _get_cors_headers() -> Dict[str, str]:
     return {
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
+        "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
     }
 
@@ -59,9 +60,27 @@ def _normalize_route(event: Dict[str, Any]) -> Tuple[str, str]:
 
 def _get_execution_id(event: Dict[str, Any], path: str) -> str:
     path_params = event.get("pathParameters") or {}
-    execution_id = path_params.get("executionId") or path_params.get("proxy")
+    execution_id = (
+        path_params.get("executionId")
+        or path_params.get("id")
+        or path_params.get("proxy")
+    )
     if execution_id:
         return execution_id
+    if "/deployment/" in path:
+        return path.rsplit("/", 1)[-1]
+    return ""
+
+
+def _get_deployment_name(event: Dict[str, Any], path: str) -> str:
+    path_params = event.get("pathParameters") or {}
+    name = (
+        path_params.get("name")
+        or path_params.get("id")
+        or path_params.get("executionId")
+    )
+    if name:
+        return name
     if "/deployment/" in path:
         return path.rsplit("/", 1)[-1]
     return ""
@@ -267,6 +286,43 @@ def _handle_poll(event, execution_id: str) -> Dict[str, Any]:
     return _build_response(200, asdict(deployment_status))
 
 
+def _handle_update_deployment(name: str, event: DeployUpdateRequest) -> Dict[str, Any]:
+    try:
+        infra_config = _load_infra_config()
+    except Exception as e:
+        return _build_response(500, f"Error loading secret: {str(e)}")
+
+    website_exists = any(site.name == name for site in infra_config.WEBSITES)
+    if not website_exists:
+        return _build_response(404, "Deployment not found.")
+
+    updated_websites = [
+        replace(site, subdomain=event.subdomain) if site.name == name else site
+        for site in infra_config.WEBSITES
+    ]
+    infra_config = replace(
+        infra_config,
+        WEBSITES=updated_websites,
+    )
+
+    logger.info(
+        "Updated deployment '%s' with subdomain '%s'.",
+        name,
+        event.subdomain,
+    )
+
+    secrets_client.put_secret_value(
+        SecretId=DEPLOYMENT_SECRET_ARN,
+        SecretString=json.dumps(infra_config.to_dict()),
+    )
+
+    try:
+        return _start_pipeline()
+    except Exception as e:
+        logger.error("Error starting pipeline: %s", str(e))
+        return _build_response(500, f"Error starting pipeline: {str(e)}")
+
+
 def _handle_list_deployments(event: Dict[str, Any]) -> Dict[str, Any]:
     try:
         infra_config = _load_infra_config()
@@ -299,6 +355,15 @@ def handler(event: Dict[str, Any], ctx) -> Dict[str, Any]:
             if request.is_empty():
                 return _build_response(400, "Invalid request body.")
             return _handle_delete(event, request, oauth_token)
+
+        if method == "PUT" and "/deployment/" in path:
+            request = DeployUpdateRequest.from_event(event)
+            if request.is_empty():
+                return _build_response(400, "Invalid request body.")
+            deployment_name = _get_deployment_name(event, path)
+            if not deployment_name:
+                return _build_response(400, "Missing deployment name.")
+            return _handle_update_deployment(deployment_name, request)
 
         if method == "GET" and "/deployment/" in path:
             execution_id = _get_execution_id(event, path)

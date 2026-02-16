@@ -86,6 +86,33 @@ class DeployDeleteRequest:
 
 
 @dataclass(frozen=True)
+class DeployUpdateRequest:
+    subdomain: str
+
+    def is_empty(self) -> bool:
+        return not any(
+            getattr(self, field.name) for field in self.__dataclass_fields__.values()
+        )
+
+    @staticmethod
+    def from_dict(data: Dict[str, Any]) -> "DeployUpdateRequest":
+        return DeployUpdateRequest(
+            subdomain=data["subdomain"],
+        )
+
+    @staticmethod
+    def from_event(event: Dict[str, Any]) -> "DeployUpdateRequest":
+        body = event.get("body")
+        if body is None:
+            return DeployUpdateRequest(subdomain="")
+        if event.get("isBase64Encoded"):
+            body = base64.b64decode(body).decode("utf-8")
+        if isinstance(body, str):
+            return DeployUpdateRequest.from_dict(json.loads(body))
+        return DeployUpdateRequest.from_dict(body)
+
+
+@dataclass(frozen=True)
 class WebsiteConfig:
     name: str
     subdomain: str

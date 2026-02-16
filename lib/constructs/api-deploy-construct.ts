@@ -115,8 +115,24 @@ export default class ApiDeployConstruct extends Construct {
         },
       },
     );
-    const deploymentByExecutionId =
-      deploymentResource.addResource("{executionId}");
+    const updateRequestModel = new apigateway.Model(
+      this,
+      "UpdateDeployRequestModel",
+      {
+        restApi: api,
+        contentType: "application/json",
+        schema: {
+          schema: apigateway.JsonSchemaVersion.DRAFT4,
+          title: "UpdateDeployRequest",
+          type: apigateway.JsonSchemaType.OBJECT,
+          properties: {
+            subdomain: { type: apigateway.JsonSchemaType.STRING },
+          },
+          required: ["subdomain"],
+        },
+      },
+    );
+    const deploymentById = deploymentResource.addResource("{executionId}");
     const deploymentStatusModel = new apigateway.Model(
       this,
       "DeploymentStatusModel",
@@ -193,7 +209,7 @@ export default class ApiDeployConstruct extends Construct {
       },
     );
 
-    deploymentByExecutionId.addMethod(
+    deploymentById.addMethod(
       "GET",
       new apigateway.LambdaIntegration(apiLambdaFunction),
       {
@@ -208,6 +224,24 @@ export default class ApiDeployConstruct extends Construct {
               "application/json": deploymentStatusModel,
             },
           },
+          { statusCode: "400" },
+          { statusCode: "404" },
+          { statusCode: "500" },
+        ],
+      },
+    );
+
+    deploymentById.addMethod(
+      "PUT",
+      new apigateway.LambdaIntegration(apiLambdaFunction),
+      {
+        requestParameters: {
+          "method.request.path.executionId": true,
+        },
+        requestModels: { "application/json": updateRequestModel },
+        requestValidator,
+        methodResponses: [
+          { statusCode: "200" },
           { statusCode: "400" },
           { statusCode: "404" },
           { statusCode: "500" },
