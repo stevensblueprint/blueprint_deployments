@@ -66,21 +66,29 @@ def handler(event, context):
     }
     logger.info("Stack resources loaded: %s", list(resources.keys()))
 
-    def find_resource_by_type(resource_type: str) -> str:
+    def find_resource_by_type(
+        resource_type: str, exclude_logical_id_contains: tuple[str, ...] = ()
+    ) -> str:
         for r in resources_response["StackResources"]:
-            if r["ResourceType"] == resource_type:
+            logical_id = r["LogicalResourceId"]
+            if r["ResourceType"] == resource_type and not any(
+                token in logical_id for token in exclude_logical_id_contains
+            ):
                 logger.info(
                     "Found resource of type '%s': LogicalId='%s', PhysicalId='%s'",
                     resource_type,
-                    r["LogicalResourceId"],
+                    logical_id,
                     r["PhysicalResourceId"],
                 )
                 return r["PhysicalResourceId"]
         return ""
 
-    s3_bucket = outputs.get("S3BucketName") or find_resource_by_type("AWS::S3::Bucket")
-    distribution_id = outputs.get("CloudFrontDistributionId") or find_resource_by_type(
-        "AWS::CloudFront::Distribution"
+    s3_bucket = find_resource_by_type(
+        "AWS::S3::Bucket", exclude_logical_id_contains=("PreviewEnvironment",)
+    )
+    distribution_id = find_resource_by_type(
+        "AWS::CloudFront::Distribution",
+        exclude_logical_id_contains=("PreviewEnvironment",),
     )
 
     secret_map = {

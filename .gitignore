@@ -13,3 +13,5 @@ cdk.out
 
 # Secret configurations
 config.json
+
+__pycache__/
