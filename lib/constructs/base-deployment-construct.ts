@@ -74,6 +74,13 @@ export default class BaseDeploymentConstruct extends Construct {
       },
     });
 
+    this.buildProject.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ec2:DescribeAvailabilityZones"],
+        resources: ["*"],
+      }),
+    );
+
     const codeBuildAction = new codepipeline_actions.CodeBuildAction({
       actionName: "Synth",
       project: this.buildProject,
@@ -140,6 +147,13 @@ export default class BaseDeploymentConstruct extends Construct {
     deployProject.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ["cloudformation:*"],
+        resources: ["*"],
+      }),
+    );
+
+    deployProject.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ec2:DescribeAvailabilityZones"],
         resources: ["*"],
       }),
     );
